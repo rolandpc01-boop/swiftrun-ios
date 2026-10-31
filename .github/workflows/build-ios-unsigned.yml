@@ -1,0 +1,66 @@
+name: Build unsigned iOS IPA
+
+on:
+  push:
+    branches:
+      - manus/ios-app
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-ipa:
+    name: Build unsigned SwiftRun IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build unsigned iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/SwiftRun/SwiftRun.xcodeproj \
+            -scheme SwiftRun \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log
+
+          app_path="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'SwiftRun.app' -print -quit)"
+          test -n "$app_path"
+          test -d "$app_path"
+
+          mkdir -p build/Payload
+          cp -R "$app_path" build/Payload/
+          (
+            cd build
+            zip -qry SwiftRun-unsigned.ipa Payload
+          )
+          unzip -l build/SwiftRun-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwiftRun-unsigned-ipa
+          path: build/SwiftRun-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 14
